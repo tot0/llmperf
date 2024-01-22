@@ -57,12 +57,13 @@ class OpenAIChatCompletionsClient(LLMClient):
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
             raise ValueError("the environment variable OPENAI_API_KEY must be set.")
-        request_id = f"{model}"
-        if "num_concurrent" in self.metadata:
-            request_id = f"{request_id}-{self.metadata['num_concurrent']}"
+        request_id = f"{str(uuid.uuid4().hex)}"
+        if "num_concurrent_requests" in request_config.metadata and 'experiment_name' in request_config.metadata:
+            request_id = f"{request_config.metadata.get('experiment_name', '')}-{request_config.metadata.get('num_concurrent_requests', '')}-{request_id}"
+        request_config.metadata["request_id"] = request_id
         headers = {
             "Authorization": f"Bearer {key}",
-            "X-Request-Id": f"{request_id}-{str(uuid.uuid4().hex)}"
+            "X-Request-Id": request_id
         }
         if not address:
             raise ValueError("No host provided.")
