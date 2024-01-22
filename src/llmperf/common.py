@@ -23,7 +23,7 @@ def construct_clients(llm_api: str, num_clients: int) -> List[LLMClient]:
 
     """
     if llm_api == "openai":
-        clients = [OpenAIChatCompletionsClient.remote() for _ in range(num_clients)]
+        clients = [OpenAIChatCompletionsClient.remote({"num_concurrent": num_clients}) for _ in range(num_clients)]
     elif llm_api == "sagemaker":
         clients = [SageMakerClient.remote() for _ in range(num_clients)]
     elif llm_api == "vertexai":

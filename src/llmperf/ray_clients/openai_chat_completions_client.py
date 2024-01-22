@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import uuid
 from typing import Any, Dict
 
 import ray
@@ -14,6 +15,9 @@ from llmperf import common_metrics
 @ray.remote
 class OpenAIChatCompletionsClient(LLMClient):
     """Client for OpenAI Chat Completions API."""
+
+    def __init__(self, metadata: Dict[str, Any] = None):
+        self.metadata = metadata or {}
 
     def llm_request(self, request_config: RequestConfig) -> Dict[str, Any]:
         prompt = request_config.prompt
@@ -53,7 +57,13 @@ class OpenAIChatCompletionsClient(LLMClient):
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
             raise ValueError("the environment variable OPENAI_API_KEY must be set.")
-        headers = {"Authorization": f"Bearer {key}"}
+        request_id = f"{model}"
+        if "num_concurrent" in self.metadata:
+            request_id = f"{request_id}-{self.metadata['num_concurrent']}"
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "X-Request-Id": f"{request_id}-{str(uuid.uuid4().hex)}"
+        }
         if not address:
             raise ValueError("No host provided.")
         if not address.endswith("/"):
