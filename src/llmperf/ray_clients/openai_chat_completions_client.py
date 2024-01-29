@@ -24,7 +24,8 @@ class OpenAIChatCompletionsClient(LLMClient):
         prompt, prompt_len = prompt
 
         message = [
-            {"role": "system", "content": ""},
+            # TODO: vllm by default doesn't support assistant role with Llama2 Conversation formatter.
+            # {"role": "system", "content": ""},
             {"role": "user", "content": prompt},
         ]
         model = request_config.model
