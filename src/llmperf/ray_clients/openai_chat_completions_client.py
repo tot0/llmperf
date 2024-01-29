@@ -49,7 +49,6 @@ class OpenAIChatCompletionsClient(LLMClient):
         metrics[common_metrics.ERROR_CODE] = None
         metrics[common_metrics.ERROR_MSG] = ""
 
-        start_time = time.monotonic()
         most_recent_received_token_time = time.monotonic()
         address = os.environ.get("OPENAI_API_BASE")
         if not address:
@@ -57,13 +56,9 @@ class OpenAIChatCompletionsClient(LLMClient):
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
             raise ValueError("the environment variable OPENAI_API_KEY must be set.")
-        request_id = f"{str(uuid.uuid4().hex)}"
-        if "num_concurrent_requests" in request_config.metadata and 'experiment_name' in request_config.metadata:
-            request_id = f"{request_config.metadata.get('experiment_name', '')}-{request_config.metadata.get('num_concurrent_requests', '')}-{request_id}"
-        request_config.metadata["request_id"] = request_id
         headers = {
             "Authorization": f"Bearer {key}",
-            "X-Request-Id": request_id
+            "X-Request-Id": request_config.metadata["request_id"]
         }
         if not address:
             raise ValueError("No host provided.")
@@ -71,51 +66,62 @@ class OpenAIChatCompletionsClient(LLMClient):
             address = address + "/"
         address += "chat/completions"
         try:
-            with requests.post(
-                address,
-                json=body,
-                stream=True,
-                timeout=180,
-                headers=headers,
-            ) as response:
-                if response.status_code != 200:
-                    error_msg = response.text
-                    error_response_code = response.status_code
-                    response.raise_for_status()
-                for chunk in response.iter_lines(chunk_size=None):
-                    chunk = chunk.strip()
-
-                    if not chunk:
+            retries = 10
+            delay = 3
+            for _ in range(retries):
+                start_time = time.monotonic()
+                with requests.post(
+                    address,
+                    json=body,
+                    stream=True,
+                    timeout=600,
+                    headers=headers,
+                ) as response:
+                    if response.status_code == 429 and retries > 0:
+                        retries = retries - 1
+                        print(f"429 error, {retries} left, retrying...")
+                        time.sleep(delay)
+                        #delay *= 2
                         continue
-                    stem = "data: "
-                    chunk = chunk[len(stem) :]
-                    if chunk == b"[DONE]":
-                        continue
-                    tokens_received += 1
-                    data = json.loads(chunk)
+                    if response.status_code != 200:
+                        error_msg = response.text
+                        error_response_code = response.status_code
+                        response.raise_for_status()
+                    for chunk in response.iter_lines(chunk_size=None):
+                        chunk = chunk.strip()
 
-                    if "error" in data:
-                        error_msg = data["error"]["message"]
-                        error_response_code = data["error"]["code"]
-                        raise RuntimeError(data["error"]["message"])
-                        
-                    delta = data["choices"][0]["delta"]
-                    if delta.get("content", None):
-                        if not ttft:
-                            ttft = time.monotonic() - start_time
-                            time_to_next_token.append(ttft)
-                        else:
-                            time_to_next_token.append(
-                                time.monotonic() - most_recent_received_token_time
-                            )
-                        most_recent_received_token_time = time.monotonic()
-                        generated_text += delta["content"]
+                        if not chunk:
+                            continue
+                        stem = "data: "
+                        chunk = chunk[len(stem) :]
+                        if chunk == b"[DONE]":
+                            continue
+                        tokens_received += 1
+                        data = json.loads(chunk)
 
-            total_request_time = time.monotonic() - start_time
-            output_throughput = tokens_received / total_request_time
+                        if "error" in data:
+                            error_msg = data["error"]["message"]
+                            error_response_code = data["error"]["code"]
+                            raise RuntimeError(data["error"]["message"])
+                            
+                        delta = data["choices"][0]["delta"]
+                        if delta.get("content", None):
+                            if not ttft:
+                                ttft = time.monotonic() - start_time
+                                time_to_next_token.append(ttft)
+                            else:
+                                time_to_next_token.append(
+                                    time.monotonic() - most_recent_received_token_time
+                                )
+                            most_recent_received_token_time = time.monotonic()
+                            generated_text += delta["content"]
+
+                total_request_time = time.monotonic() - start_time
+                output_throughput = tokens_received / total_request_time
+                break
 
         except Exception as e:
-            metrics[common_metrics.ERROR_MSG] = error_msg
+            metrics[common_metrics.ERROR_MSG] = f"{error_msg}, exception: {e}"
             metrics[common_metrics.ERROR_CODE] = error_response_code
             print(f"Warning Or Error: {e}")
             print(error_response_code)
