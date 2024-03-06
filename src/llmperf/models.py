@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
 
 
 class RequestConfig(BaseModel):
@@ -18,4 +19,4 @@ class RequestConfig(BaseModel):
     prompt: Tuple[str, int]
     sampling_params: Optional[Dict[str, Any]] = None
     llm_api: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
