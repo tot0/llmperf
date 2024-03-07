@@ -1,7 +1,6 @@
 import json
 import os
 import time
-import uuid
 from typing import Any, Dict
 
 import ray
@@ -10,21 +9,21 @@ import requests
 from llmperf import common_metrics
 from llmperf.models import RequestConfig
 from llmperf.ray_llm_client import LLMClient
+from llmperf.utils import RetryConfig
 
 
 @ray.remote
 class OpenAIChatCompletionsClient(LLMClient):
     """Client for OpenAI Chat Completions API."""
 
-    def __init__(self, metadata: Dict[str, Any] = None):
-        self.metadata = metadata or {}
+    def __init__(self, retry_config: RetryConfig = None):
+        self.retry_config = retry_config
 
     def llm_request(self, request_config: RequestConfig) -> Dict[str, Any]:
         prompt = request_config.prompt
         prompt, prompt_len = prompt
 
         message = [
-            # TODO: vllm by default doesn't support assistant role with Llama2 Conversation formatter.
             # {"role": "system", "content": ""},
             {"role": "user", "content": prompt},
         ]
@@ -59,7 +58,7 @@ class OpenAIChatCompletionsClient(LLMClient):
             raise ValueError("the environment variable OPENAI_API_KEY must be set.")
         headers = {
             "Authorization": f"Bearer {key}",
-            "X-Request-Id": request_config.metadata["request_id"]
+            "X-Request-Id": request_config.metadata["request_id"],
         }
         if not address:
             raise ValueError("No host provided.")
@@ -67,8 +66,14 @@ class OpenAIChatCompletionsClient(LLMClient):
             address = address + "/"
         address += "chat/completions"
         try:
-            retries = 10
-            delay = 3
+            retries = 1
+            delay = 0
+            backoff = 0
+            if self.retry_config:
+                retries = self.retry_config.max_retries
+                delay = self.retry_config.delay_s
+                backoff = self.retry_config.backoff
+
             for _ in range(retries):
                 start_time = time.monotonic()
                 with requests.post(
@@ -80,9 +85,9 @@ class OpenAIChatCompletionsClient(LLMClient):
                 ) as response:
                     if response.status_code == 429 and retries > 0:
                         retries = retries - 1
-                        print(f"429 error, {retries} left, retrying...")
+                        print(f"429 error, {retries} left")
                         time.sleep(delay)
-                        #delay *= 2
+                        delay += backoff
                         continue
                     if response.status_code != 200:
                         error_msg = response.text
@@ -104,7 +109,7 @@ class OpenAIChatCompletionsClient(LLMClient):
                             error_msg = data["error"]["message"]
                             error_response_code = data["error"]["code"]
                             raise RuntimeError(data["error"]["message"])
-                            
+
                         delta = data["choices"][0]["delta"]
                         if delta.get("content", None):
                             if not ttft:
@@ -127,7 +132,9 @@ class OpenAIChatCompletionsClient(LLMClient):
             print(f"Warning Or Error: {e}")
             print(error_response_code)
 
-        metrics[common_metrics.INTER_TOKEN_LAT] = sum(time_to_next_token) #This should be same as metrics[common_metrics.E2E_LAT]. Leave it here for now
+        metrics[common_metrics.INTER_TOKEN_LAT] = sum(
+            time_to_next_token
+        )  # This should be same as metrics[common_metrics.E2E_LAT]. Leave it here for now
         metrics[common_metrics.TTFT] = ttft
         metrics[common_metrics.E2E_LAT] = total_request_time
         metrics[common_metrics.REQ_OUTPUT_THROUGHPUT] = output_throughput

@@ -4,10 +4,10 @@ import pathlib
 import random
 import subprocess
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
 from transformers import LlamaTokenizerFast
-
 
 RESULTS_VERSION = "2023-08-31"
 
@@ -145,3 +145,12 @@ def flatten_dict(d, parent_key="", sep="_"):
         else:
             items.append((new_key, v))
     return dict(items)
+
+
+@dataclass
+class RetryConfig:
+    """Configuration for retrying requests."""
+
+    max_retries: int
+    delay_s: int
+    backoff: int

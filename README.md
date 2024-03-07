@@ -338,6 +338,33 @@ python llm_correctness.py \
 
 ```
 
+## Config based usage
+
+`benchmark_config.py` is an entrypoint very similar to `token_benchmark_ray.py` in that it's focus is on load testing to measure various throughput/latency metrics of an LLM serving endpoint.
+
+It supports configuration files for benchmark settings to use, they can be found at: `config/`. Configs specify a particular `RequestGenerator` which will be loaded from `llmperf.request_generators.<module_name>` and use to parse the config and get `RequestConfigs` to send via the chosen client.
+
+To discover the different params run: `python benchmark_config.py -h`
+
+```bash
+python benchmark_config.py \
+    --model "llama-2-7b" \
+    --llm-api "openai" \
+    --platform "<useful_to_distinguish_different_hardware_configs_for_a_single_model>" \
+    --endpoint="http://0.0.0.0:5001/v1" \
+    --additional-sampling-params '{"ignore_eos": true}' \
+    --benchmark-configs "configs/prompt_ratio_sweep/1000_total_tokens.json" \
+    --benchmark-key-override '{"prompt_input_percentage": [0.8]}'
+```
+
+### Results in Azure Monitor
+
+It's much easier to compare results across runs with queries and aggregates, to send logs/spans/metrics for the results of each benchmark to Azure Monitor provide Connection String via: `--azure-monitor-connection-string="<connection_string>".
+
+Make sure to install `llmperf` using the `azure_monitor` extra: `pip install -e '.[azure_monitor]'
+
+Opentelemetry is used for instrumentation, different exporters could be added to the `llmperf.otel` module.
+
 ## Saving Results
 
 The results of the load test and correctness test are saved in the results directory specified by the `--results-dir` argument. The results are saved in 2 files, one with the summary metrics of the test, and one with metrics from each individual request that is returned.
