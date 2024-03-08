@@ -102,7 +102,6 @@ class OpenAIChatCompletionsClient(LLMClient):
                         chunk = chunk[len(stem) :]
                         if chunk == b"[DONE]":
                             continue
-                        tokens_received += 1
                         data = json.loads(chunk)
 
                         if "error" in data:
@@ -112,6 +111,7 @@ class OpenAIChatCompletionsClient(LLMClient):
 
                         delta = data["choices"][0]["delta"]
                         if delta.get("content", None):
+                            tokens_received += 1
                             if not ttft:
                                 ttft = time.monotonic() - start_time
                                 time_to_next_token.append(ttft)
@@ -121,6 +121,13 @@ class OpenAIChatCompletionsClient(LLMClient):
                                 )
                             most_recent_received_token_time = time.monotonic()
                             generated_text += delta["content"]
+
+                # if "usage" in data:
+                #     usage = data["usage"]
+                #     if "completion_tokens" in usage:
+                #         assert usage["completion_tokens"] == tokens_received
+                #     else:
+                #         print("Warning: completion_tokens not found in usage.")
 
                 total_request_time = time.monotonic() - start_time
                 output_throughput = tokens_received / total_request_time
