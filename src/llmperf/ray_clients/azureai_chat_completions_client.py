@@ -13,8 +13,8 @@ from llmperf.utils import RetryConfig
 
 
 @ray.remote
-class OpenAIChatCompletionsClient(LLMClient):
-    """Client for OpenAI Chat Completions API."""
+class AzureAIChatCompletionsClient(LLMClient):
+    """Client for Azure AI Chat Completions API."""
 
     def __init__(self, retry_config: RetryConfig = None):
         self.retry_config = retry_config
@@ -49,13 +49,14 @@ class OpenAIChatCompletionsClient(LLMClient):
         metrics[common_metrics.ERROR_CODE] = None
         metrics[common_metrics.ERROR_MSG] = ""
 
+        start_time = time.monotonic()
         most_recent_received_token_time = time.monotonic()
-        address = os.environ.get("OPENAI_API_BASE")
+        address = os.environ.get("AZUREAI_API_BASE")
         if not address:
-            raise ValueError("the environment variable OPENAI_API_BASE must be set.")
-        key = os.environ.get("OPENAI_API_KEY")
+            raise ValueError("the environment variable AZUREAI_API_BASE must be set.")
+        key = os.environ.get("AZUREAI_API_KEY")
         if not key:
-            raise ValueError("the environment variable OPENAI_API_KEY must be set.")
+            raise ValueError("the environment variable AZUREAI_API_KEY must be set.")
         headers = {
             "Authorization": f"Bearer {key}",
             "X-Request-Id": request_config.metadata["request_id"],
@@ -110,6 +111,7 @@ class OpenAIChatCompletionsClient(LLMClient):
                             raise RuntimeError(data["error"]["message"])
 
                         delta = data["choices"][0]["delta"]
+
                         if delta.get("content", None):
                             tokens_received += 1
                             if not ttft:

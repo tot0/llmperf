@@ -349,7 +349,7 @@ To discover the different params run: `python benchmark_config.py -h`
 ```bash
 python benchmark_config.py \
     --model "llama-2-7b" \
-    --llm-api "openai" \
+    --llm-api "azureai" \
     --platform "<useful_to_distinguish_different_hardware_configs_for_a_single_model>" \
     --endpoint="http://0.0.0.0:5001/v1" \
     --additional-sampling-params '{"ignore_eos": true}' \

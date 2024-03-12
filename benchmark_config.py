@@ -89,7 +89,7 @@ def get_token_throughput_latencies(
         request_id = ""
         if "experiment_name" in user_metadata:
             request_id = f"{user_metadata.get('experiment_name', '')}-"
-        request_id += f"{user_metadata.get('session_id', '')}-{user_metadata.get('benchmark_config_name', '')}-{user_metadata.get('num_concurrent_requests', '')}-{user_metadata.get('platform', '')}-{user_metadata.get('model', '')}-{request_uuid_id}"
+        request_id += f"{user_metadata.get('session_id', '')}-{user_metadata.get('benchmark_config_name', '')}-{user_metadata.get('num_concurrent_requests', '')}-{user_metadata.get('platform', '')}-{user_metadata.get('model', '').replace('-', '_')}-{request_uuid_id}"
 
         request_config.sampling_params.update(additional_sampling_params)
         request_config.llm_api = llm_api
@@ -157,7 +157,10 @@ def get_token_throughput_latencies(
     pbar.close()
     end_time = time.monotonic()
     if end_time - start_time >= test_timeout_s:
-        print("Test timed out before all requests could be completed.")
+        test_duration = end_time - start_time
+        print(
+            f"Test timed out before all requests could be completed. {start_time = } {end_time = } {test_duration = } {test_timeout_s = }"
+        )
 
     # check one last time that there are no remaining results to collect.
     outs = req_launcher.get_next_ready()
@@ -260,6 +263,7 @@ def metrics_summary(
 
     ret[common_metrics.NUM_REQ_STARTED] = len(metrics)
 
+    ret[common_metrics.NUM_REQ_RETRIES] = df[common_metrics.NUM_REQ_RETRIES].sum()
     error_codes = df[common_metrics.ERROR_CODE].dropna()
     num_errors = len(error_codes)
     ret[common_metrics.ERROR_RATE] = num_errors / len(metrics) if len(metrics) else 0
@@ -339,7 +343,7 @@ def run_ratio_sweep_benchmark(
                 metrics_meter=metrics_meter,
             )
 
-            filename = f"{model}_{total_tokens_mean}total_{total_tokens_stddev}stdev_{int(prompt_percentage*100)}percent__{num_concurrent_requests}clients"
+            filename = f"{model}_{total_tokens_mean}total_{total_tokens_stddev}stdev_{int(prompt_percentage*100)}percent_{num_concurrent_requests}clients"
             filename = re.sub(r"[^\w\d-]+", "-", filename)
             filename = re.sub(r"-{2,}", "-", filename)
             summary_filename = f"{filename}_summary"
@@ -520,6 +524,7 @@ class MetricsMeter:
 
 if __name__ == "__main__":
     import argparse
+    from datetime import datetime
 
     from llmperf.common import SUPPORTED_APIS
     from llmperf.otel import init_telemetry
@@ -606,6 +611,7 @@ if __name__ == "__main__":
     os.environ["OPENAI_API_BASE"] = args.endpoint
     os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "memes")
 
+    # TODO: Conditional init if using ray as distributed client orchestrator, try locust as client orchestrator
     env_vars = dict(os.environ)
     ray.init(runtime_env={"env_vars": env_vars})
 
@@ -614,30 +620,35 @@ if __name__ == "__main__":
 
     init_telemetry(args.azure_monitor_connection_string, experiment_name, session_id)
 
-    results_dir = str(Path(args.results_dir) / args.model / args.platform)
+    results_dir = str(
+        Path(args.results_dir)
+        / args.model
+        / args.platform
+        / datetime.now().strftime("%Y%m%d%H%M%S")
+    )
+
+    session_metadata = {
+        "session_id": session_id,
+        "experiment_name": experiment_name,
+        "model": args.model,
+        "platform": args.platform,
+        "llm_api": args.llm_api,
+        "additional_sampling_params": args.additional_sampling_params,
+        "benchmark_configs": args.benchmark_configs,
+        "results_dir": results_dir,
+    }
 
     start = time.time()
     _root_logger.info(
         f"llmperf_start: session_id={session_id}",
-        extra={
-            "session_id": session_id,
-            "experiment_name": experiment_name,
-            "model": args.model,
-            "platform": args.platform,
-            "llm_api": args.llm_api,
-            "additional_sampling_params": args.additional_sampling_params,
-            "benchmark_configs": args.benchmark_configs,
-            "results_dir": results_dir,
-        },
+        extra=session_metadata,
     )
 
     tracer = trace.get_tracer(__name__)
 
     session_results = []
 
-    with tracer.start_as_current_span(
-        "llmperf_start", attributes={"experiment_name": experiment_name}
-    ):
+    with tracer.start_as_current_span("llmperf_start", attributes={**session_metadata}):
         metrics_meter = MetricsMeter("llmperf_metrics")
         for benchmark_config_file in args.benchmark_configs:
             with open(benchmark_config_file) as f:
