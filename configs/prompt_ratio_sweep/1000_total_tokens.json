@@ -1,0 +1,20 @@
+{
+    "total_tokens": {
+        "mean": 1000,
+        "stddev": 10
+    },
+    "prompt_input_percentage": [
+        0.2,
+        0.4,
+        0.6,
+        0.8
+    ],
+    "max_num_completed_requests": 1000,
+    "timeout": 360,
+    "num_concurrent_requests": [
+        32,
+        64,
+        128,
+        256
+    ]
+}

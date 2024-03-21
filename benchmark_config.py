@@ -116,7 +116,7 @@ def get_token_throughput_latencies(
 
                 message = "Completed Request"
                 if request_metrics.get(common_metrics.ERROR_CODE, None) is not None:
-                    message = f"Failed Request: {request_metrics.get(common_metrics.ERROR_CODE)}"
+                    message = f"Failed Request: {request_metrics.get(common_metrics.ERROR_CODE)} {request_metrics.get(common_metrics.ERROR_MSG, '')}"
                 _root_logger.info(
                     message,
                     extra={
@@ -495,6 +495,7 @@ class MetricsMeter:
         self.req_output_throughput = self.metrics_meter.create_histogram(
             "req_output_throughput"
         )
+        self.req_retries = self.metrics_meter.create_histogram("req_retries")
 
     def record_request_metrics(
         self, request_config: RequestConfig, request_metrics: dict, user_metadata: dict
@@ -503,6 +504,14 @@ class MetricsMeter:
             "request_id": request_config.metadata.get("request_id", "none"),
             **user_metadata,
         }
+        if request_metrics.get(common_metrics.ERROR_CODE, None) is not None:
+            custom_dimensions[common_metrics.ERROR_CODE] = request_metrics[
+                common_metrics.ERROR_CODE
+            ]
+            custom_dimensions[common_metrics.ERROR_MSG] = request_metrics[
+                common_metrics.ERROR_MSG
+            ]
+
         self.num_input_tokens.record(
             request_metrics[common_metrics.NUM_INPUT_TOKENS], custom_dimensions
         )
@@ -520,6 +529,10 @@ class MetricsMeter:
         self.req_output_throughput.record(
             request_metrics[common_metrics.REQ_OUTPUT_THROUGHPUT], custom_dimensions
         )
+        if request_metrics.get(common_metrics.NUM_REQ_RETRIES, None) is not None:
+            self.req_retries.record(
+                request_metrics[common_metrics.NUM_REQ_RETRIES], custom_dimensions
+            )
 
 
 if __name__ == "__main__":
@@ -608,8 +621,12 @@ if __name__ == "__main__":
 
     args = args.parse_args()
 
-    os.environ["OPENAI_API_BASE"] = args.endpoint
-    os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "memes")
+    if "azureai" in args.llm_api:
+        os.environ["AZUREAI_API_BASE"] = args.endpoint
+        os.environ["AZUREAI_API_KEY"] = os.environ.get("AZUREAI_API_KEY", "memes")
+    else:
+        os.environ["OPENAI_API_BASE"] = args.endpoint
+        os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "memes")
 
     # TODO: Conditional init if using ray as distributed client orchestrator, try locust as client orchestrator
     env_vars = dict(os.environ)

@@ -1,0 +1,14 @@
+{
+    "mean_input_tokens": 500,
+    "stddev_input_tokens": 10,
+    "mean_output_tokens": 50,
+    "stddev_output_tokens": 10,
+    "max_num_completed_requests": 1024,
+    "timeout": 99999,
+    "num_concurrent_requests": [
+        32,
+        64,
+        128,
+        256
+    ]
+}
